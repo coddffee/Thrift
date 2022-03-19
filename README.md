@@ -1,10 +1,10 @@
 # `README`
 
-### 概述
-
 &emsp;&emsp;这是一个测试`Thrift`框架的项目，`Server`采用`Java`编程，`Client`采用`C#`编程。
 
-### 开始
+## 开始
+
+### 服务端
 
 &emsp;&emsp;首先需要在计算机上安装`Thrift`的`IDL`编译器(参考官方网站[`thrift-download`](https://thrift.apache.org/download))，`Windows`端安装配置：
 
@@ -41,6 +41,14 @@ ThriftServer
 &emsp;&emsp;`Java`添加`Maven`依赖(可在`Maven`仓库[`maven-repository`](https://mvnrepository.com)中搜寻)：
 
 ```xml
+<!-- Thrift依赖于此包 -->
+<dependency>
+    <groupId>org.slf4j</groupId>
+    <artifactId>slf4j-simple</artifactId>
+    <version>1.7.25</version>
+    <scope>test</scope>
+</dependency>
+<!-- Thrift依赖 -->
 <dependency>
     <groupId>org.apache.thrift</groupId>
     <artifactId>libthrift</artifactId>
@@ -165,7 +173,7 @@ thrift -gen java -out ../java Exception.thrift
 thrift -gen java -out ../java Service.thrift
 ```
 
-&emsp;&emsp;接下来需要为`Server`端生成的`Service`编写处理器类，可以看到编译生成的代码中每个`Thrift`中的`service`都会对应一个名为`Iface`的接口，例如以上`PersonService.thrift`编译得到的`PersonService.java`中：
+&emsp;&emsp;接下来需要为`Server`端生成的`service`编写`handler`，可以看到编译生成的代码中每个`Thrift`中的`service`都会对应一个名为`Iface`的接口，例如以上`PersonService.thrift`编译得到的`PersonService.java`中：
 
 ```java
 package com.coddffee.service;
@@ -187,7 +195,7 @@ public class PersonService {
 }
 ```
 
-&emsp;&emsp;为`Service`编写处理器类即实现对应`Iface`接口，例：
+&emsp;&emsp;为`service`编写`handler`即实现对应`Iface`接口，远程过程调用的业务逻辑即由此`handler`实现。例：
 
 ```java
 package com.coddffee.handler;
@@ -222,7 +230,7 @@ public class PersonServiceHandler implements PersonService.Iface {
 }
 ```
 
-&emsp;&emsp;最后需要启动远程过程调用服务器，首先需要获取`Service`的处理器，可以看到编译生成的代码中每个`Thrift`中的`service`都会对应一个名为`Prosesser`的处理器类，远程过程调用的中间处理即由此类实现，例如以上`PersonService.thrift`编译得到的`PersonService.java`中：
+&emsp;&emsp;编译生成的`service`代码中还有一个重要的类`Processor`，即`service`的处理器，远程过程调用的中间处理即由此类实现，例如以上`PersonService.thrift`编译得到的`PersonService.java`中：
 
 ```java
 package com.coddffee.service;
@@ -242,3 +250,204 @@ public class PersonService {
     // ...
 }
 ```
+
+&emsp;&emsp;启动服务器：
+
+```java
+public class App {
+    public static void main(String[] args) {
+        try {
+            // 创建handler实例
+            PersonServiceHandler handler = new PersonServiceHandler();
+            // 使用handler创建processor
+            PersonService.Processor<?> processor = new PersonService.Processor<>(handler);
+            // 设置服务端口号
+            TServerTransport serverTransport = new TServerSocket(9090);
+            // 创建服务器
+            TServer server = new TSimpleServer(
+                new TServer.Args(serverTransport).processor(processor));
+            // 启动服务器
+            server.serve();
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### 客户端
+
+&emsp;&emsp;客户端使用`C#`语言实现，项目结构为：
+
+```xxx
+ThriftClient
+|---Program.cs
+|---com.coddffee(由thrift编译生成)
+    |---enums
+    |---entity
+    |---exception
+    |---service
+|---thrift
+    |---compile.cmd(用于批量编译)
+    |---Enums.thrift
+    |---Entity.thrift
+    |---Exception.thrift
+    |---Service.thrift
+```
+
+&emsp;&emsp;编写`IDL`文件：
+`Enums.Thrift`
+
+```xxx
+/*
+  此IDL专用于定义项目所使用的枚举体
+*/
+
+namespace netstd com.coddffee.enums
+
+enum Gender {
+    MALE = 0;
+    FEMALE = 1;
+}
+```
+
+`Entity.thrift`
+
+```xxx
+/*
+  此IDL专用于定义项目所使用的实体类
+*/
+
+namespace netstd com.coddffee.entity
+
+// 引用其它thrift文件，注意必须使用""
+include "Enums.thrift"
+
+// 注意struct中的属性必须添加序号
+struct Person {
+    // 引用其他IDL中定义的类型时必须使用Thrift文件名限定名，即file.type
+    1:i32 id;
+    2:string name;
+    3:Enums.Gender gender;
+}
+```
+
+`Exception.thrift`
+
+```xxx
+/*
+  此IDL专用于定义项目所使用的实体类
+*/
+
+namespace netstd com.coddffee.exception
+
+// 注意exception中的属性必须添加序号
+exception PersonException {
+    1:i32 exceptionId;
+    2:string message;
+}
+```
+
+`Service.thrift`
+
+```xxx
+/*
+  此IDL专用于定义项目所使用的服务类
+*/
+
+namespace netstd com.coddffee.service
+
+// 引用其它thrift文件，注意必须使用""
+include "Enums.thrift"
+include "Entity.thrift"
+include "Exception.thrift"
+
+// service定义中没有序号
+service PersonService {
+    // 引用其他IDL中定义的类型时必须使用Thrift文件名限定名，即file.type
+    Entity.Person newPerson(1:i32 id,2:string name,3:Enums.Gender gender);
+    i32 getId();
+    string getName();
+    Enums.Gender getGender();
+    void printPerson() throws (1:Exception.PersonException e);
+}
+```
+
+&emsp;&emsp;编译`IDL`文件：
+
+`compile.cmd`
+
+```xxx
+thrift -gen netstd -out ../ Enums.thrift
+thrift -gen netstd -out ../ Entity.thrift
+thrift -gen netstd -out ../ Exception.thrift
+thrift -gen netstd -out ../ Service.thrift
+```
+
+&emsp;&emsp;启动客户端并连接服务端：
+
+```c#
+namespace ThriftClient {
+    internal class Programs {
+        public static void Main(String[] args) {
+            try {
+                TTransport transport = new TSocketTransport("localhost",9090,null,0);
+                TProtocol protocol = new TBinaryProtocol(transport);
+                // 创建客户端
+                PersonService.Client client = new PersonService.Client(protocol);
+                // 打开连接
+                transport.OpenAsync();
+                String message;
+                // 调用服务
+                client.newPerson(1,"Tony",Gender.MALE);
+                Console.WriteLine("please input method : ");
+                while(true) {
+                    if((message = Console.ReadLine()) != null) {
+                        if(message.Contains("getId")){
+                            Console.WriteLine("id is : " + client.getId().Result);
+                        }
+                        else if(message.Contains("getName")){
+                            Console.WriteLine("name is : " + client.getName().Result);
+                        }
+                        else if(message.Contains("getGender")){
+                            Console.WriteLine("gender is : " + client.getGender().Result);
+                        }
+                        else if(message.Contains("printPerson")){
+                            client.printPerson();
+                        }
+                        else if(message.Contains("exit")){
+                            transport.Close();
+                            Console.WriteLine("client closed.");
+                            return;
+                        }
+                        Console.WriteLine("please input method : ");
+                    }
+                }
+            } catch(Exception e) {
+                Console.WriteLine(e.Message);
+            }
+        }
+    }
+}
+```
+
+&emsp;&emsp;客户端通过`IDL`编译生成`service`代码中的`Client`类调用，例如以上例子编译得到的`C#`代码：
+
+```c#
+namespace com.coddffee.service {
+    public partial class PersonService {
+        // ...
+        public class Client : TBaseClient,IDisposable,IAsync {
+            // 返回Task类型，通过Task.Result属性获取返回值
+            public async global::System.Threading.Tasks.Task<int> getId(
+                CancellationToken cancellationToken = default) {
+                // ...
+            }
+            // ...
+        }
+        // ...
+    }
+    // ...
+}
+```
+
